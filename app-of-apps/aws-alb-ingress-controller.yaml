@@ -36,6 +36,8 @@ spec:
           serviceAccount:
             create: true
             name: aws-load-balancer-controller
+            annotations:
+              eks.amazonaws.com/role-arn: arn:aws:iam::700335172432:role/cool-aws-lbc
           ingressClass: alb
           createIngressClassResource: true
           controllerConfig:
