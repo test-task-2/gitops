@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-alb-ingress-controller
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  sources:
+    - repoURL: https://github.com/kubernetes-sigs/gateway-api
+      targetRevision: v1.6.0
+      path: config/crd/standard
+    - repoURL: https://github.com/kubernetes-sigs/aws-load-balancer-controller
+      targetRevision: v3.5.0
+      path: config/crd/gateway
+    - repoURL: https://github.com/kubernetes-sigs/aws-load-balancer-controller
+      targetRevision: v3.5.0
+      path: helm/aws-load-balancer-controller
+      helm:
+        releaseName: aws-load-balancer-controller
+        values: |
+          clusterName: cool
+          region: us-east-1
+          replicaCount: 1
+          serviceAccount:
+            create: true
+            name: aws-load-balancer-controller
+          ingressClass: alb
+          createIngressClassResource: true
+          controllerConfig:
+            featureGates:
+              ALBGatewayAPI: true
