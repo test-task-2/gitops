@@ -9,4 +9,4 @@ spec:
     metadata:
       name: crossplane-aws
       annotations:
-        eks.amazonaws.com/role-arn: arn:aws:iam::975049976794:role/cool-crossplane
+        eks.amazonaws.com/role-arn: arn:aws:iam::767398111127:role/cool-crossplane
