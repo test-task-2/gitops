@@ -1,0 +1,19 @@
+# Used by AWS providers (runtimeConfigRef: irsa). Crossplane core CRDs must exist first.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: irsa
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: crossplane-aws
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::975049976794:role/cool-crossplane
+---
+apiVersion: aws.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: IRSA
