@@ -1,0 +1,15 @@
+# Redis in Terraform subnet group cool-redis. Connection is stored in Secrets Manager cool/redis.
+apiVersion: platform.cool/v1alpha1
+kind: RedisInstance
+metadata:
+  name: cool-redis
+  namespace: data
+spec:
+  region: us-east-1
+  identifier: cool-redis
+  engineVersion: "7.1"
+  nodeType: cache.t4g.micro
+  subnetGroupName: cool-redis
+  vpcSecurityGroupSelector:
+    tags:
+      Tier: redis
