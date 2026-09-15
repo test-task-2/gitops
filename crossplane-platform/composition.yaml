@@ -147,6 +147,12 @@ spec:
               return ids
 
 
+          def _get(obj, key, default=None):
+              if key in obj:
+                  return obj[key]
+              return default
+
+
           def compose(req, rsp):
               xr = req.observed.composite.resource
               spec = xr["spec"]
@@ -171,7 +177,7 @@ spec:
                   )
                   return
 
-              identifier = spec.get("identifier") or name
+              identifier = _get(spec, "identifier") or name
               rsp.desired.composite.resource.get_or_create_struct("status")["vpcSecurityGroupIds"] = ids
               rsp.desired.resources["rds"].resource.update({
                   "apiVersion": "rds.aws.m.upbound.io/v1beta1",
@@ -184,13 +190,13 @@ spec:
                           "region": region,
                           "identifier": identifier,
                           "engine": "postgres",
-                          "engineVersion": spec.get("engineVersion") or "16.6",
-                          "instanceClass": spec.get("instanceClass") or "db.t3.micro",
-                          "allocatedStorage": int(spec.get("allocatedStorage") or 20),
+                          "engineVersion": _get(spec, "engineVersion") or "16.6",
+                          "instanceClass": _get(spec, "instanceClass") or "db.t3.micro",
+                          "allocatedStorage": int(_get(spec, "allocatedStorage") or 20),
                           "storageType": "gp2",
                           "storageEncrypted": True,
-                          "dbName": spec.get("dbName") or "app",
-                          "username": spec.get("username") or "appadmin",
+                          "dbName": _get(spec, "dbName") or "app",
+                          "username": _get(spec, "username") or "appadmin",
                           "autoGeneratePassword": True,
                           "passwordSecretRef": {
                               "name": name,
