@@ -4,6 +4,8 @@ metadata:
   name: app
 spec:
   role: cool-karpenter-node
+  tags:
+    Name: cool-node-app
   amiSelectorTerms:
     - alias: al2023@latest
   subnetSelectorTerms:
