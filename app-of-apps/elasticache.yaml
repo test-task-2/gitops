@@ -1,4 +1,4 @@
-# Disabled: Crossplane teardown. Uncomment this Application to re-enable.
+# Disabled while Terraform var.use_terraform_stack=true. Uncomment to let Crossplane own ElastiCache.
 #
 # apiVersion: argoproj.io/v1alpha1
 # kind: Application

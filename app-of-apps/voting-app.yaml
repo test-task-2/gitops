@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: voting-app
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: voting
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 20
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  sources:
+    - repoURL: https://github.com/test-task-2/example-voting-app.git
+      targetRevision: HEAD
+      ref: values
+    - repoURL: https://github.com/test-task-2/example-voting-app.git
+      targetRevision: HEAD
+      path: charts/voting-app
+      helm:
+        releaseName: voting-app
+        valueFiles:
+          - $values/values-aws.yaml
