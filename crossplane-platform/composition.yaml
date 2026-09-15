@@ -20,6 +20,8 @@ spec:
           import hmac
           import json
           import os
+          import secrets
+          import string
           import urllib.error
           import urllib.parse
           import urllib.request
@@ -56,10 +58,10 @@ spec:
               return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
 
-          def describe_security_groups(region, tags):
+          def _ec2_ids(region, action, set_tag, id_tag, tags):
               access, secret, session = _creds()
               params = {
-                  "Action": "DescribeSecurityGroups",
+                  "Action": action,
                   "Version": "2016-11-15",
               }
               for i, (k, v) in enumerate(tags.items(), start=1):
@@ -119,7 +121,7 @@ spec:
                   with urllib.request.urlopen(req, timeout=15) as resp:
                       body = resp.read()
               except urllib.error.HTTPError as exc:
-                  raise RuntimeError("EC2 DescribeSecurityGroups HTTP %s: %s" % (exc.code, exc.read().decode()[:800])) from exc
+                  raise RuntimeError("EC2 %s HTTP %s: %s" % (action, exc.code, exc.read().decode()[:800])) from exc
 
               root = ET.fromstring(body)
               for el in root.iter():
@@ -136,22 +138,86 @@ spec:
 
               ids = []
               for info in root.iter():
-                  if _local(info.tag) != "securityGroupInfo":
+                  if _local(info.tag) != set_tag:
                       continue
                   for item in info:
                       if _local(item.tag) != "item":
                           continue
                       for child in item:
-                          if _local(child.tag) == "groupId" and child.text:
+                          if _local(child.tag) == id_tag and child.text:
                               ids.append(child.text)
                               break
               return ids
+
+
+          def describe_security_groups(region, tags):
+              return _ec2_ids(region, "DescribeSecurityGroups", "securityGroupInfo", "groupId", tags)
+
+
+          def describe_subnets(region, tags):
+              return _ec2_ids(region, "DescribeSubnets", "subnetSet", "subnetId", tags)
 
 
           def _get(obj, key, default=None):
               if key in obj:
                   return obj[key]
               return default
+
+
+          def _obs(req, name):
+              if name not in req.observed.resources:
+                  return None
+              return req.observed.resources[name].resource
+
+
+          def _at_provider(res):
+              if not res or "status" not in res:
+                  return {}
+              st = res["status"]
+              if "atProvider" not in st:
+                  return {}
+              return st["atProvider"]
+
+
+          def _master_arn(rds):
+              at = _at_provider(rds)
+              mus = _get(at, "masterUserSecret")
+              if not mus:
+                  return ""
+              first = mus[0]
+              return str(_get(first, "secretArn") or "")
+
+
+          def _lambda_arn(stack):
+              at = _at_provider(stack)
+              outs = _get(at, "outputs")
+              if not outs:
+                  return ""
+              if "RotationLambdaARN" in outs:
+                  return str(outs["RotationLambdaARN"])
+              if "RotationLambdaArn" in outs:
+                  return str(outs["RotationLambdaArn"])
+              try:
+                  for item in outs:
+                      key = str(_get(item, "outputKey") or _get(item, "OutputKey") or "")
+                      if key in ("RotationLambdaARN", "RotationLambdaArn"):
+                          return str(_get(item, "outputValue") or _get(item, "OutputValue") or "")
+                      kl = key.lower()
+                      if "lambda" in kl and "arn" in kl:
+                          return str(_get(item, "outputValue") or _get(item, "OutputValue") or "")
+              except TypeError:
+                  pass
+              for k in outs:
+                  kl = str(k).lower()
+                  if "lambda" in kl and "arn" in kl:
+                      return str(outs[k])
+              return ""
+
+
+          def _job_done(job):
+              if not job or "status" not in job:
+                  return False
+              return int(_get(job["status"], "succeeded") or 0) >= 1
 
 
           def compose(req, rsp):
@@ -179,7 +245,22 @@ spec:
                   return
 
               identifier = _get(spec, "identifier") or name
-              rsp.desired.composite.resource.get_or_create_struct("status")["vpcSecurityGroupIds"] = ids
+              db_name = _get(spec, "dbName") or "app"
+              master_user = _get(spec, "username") or "appadmin"
+              app_user = _get(spec, "appUsername") or "app"
+              rotate_after = int(_get(spec, "rotateAfterDays") or 30)
+              app_secret_name = "cool/postgres-app"
+              k8s_app_secret = "%s-app" % identifier
+              k8s_master_secret = "%s-master" % identifier
+              provider = {
+                  "kind": "ClusterProviderConfig",
+                  "name": "default",
+              }
+
+              status = rsp.desired.composite.resource.get_or_create_struct("status")
+              status["vpcSecurityGroupIds"] = ids
+              status["appSecretName"] = app_secret_name
+
               rsp.desired.resources["rds"].resource.update({
                   "apiVersion": "rds.aws.m.upbound.io/v1beta1",
                   "kind": "Instance",
@@ -196,13 +277,9 @@ spec:
                           "allocatedStorage": int(_get(spec, "allocatedStorage") or 20),
                           "storageType": "gp2",
                           "storageEncrypted": True,
-                          "dbName": _get(spec, "dbName") or "app",
-                          "username": _get(spec, "username") or "appadmin",
-                          "autoGeneratePassword": True,
-                          "passwordSecretRef": {
-                              "name": name,
-                              "key": "password",
-                          },
+                          "dbName": db_name,
+                          "username": master_user,
+                          "manageMasterUserPassword": True,
                           "dbSubnetGroupName": spec["dbSubnetGroupName"],
                           "vpcSecurityGroupIds": ids,
                           "publiclyAccessible": False,
@@ -217,16 +294,314 @@ spec:
                               "Project": "cool",
                           },
                       },
-                      "providerConfigRef": {
-                          "kind": "ClusterProviderConfig",
-                          "name": "default",
-                      },
+                      "providerConfigRef": provider,
                       "writeConnectionSecretToRef": {
                           "name": "%s-conn" % identifier,
                       },
                   },
               })
-              response.normal(rsp, "attached security group %s from tags %s" % (ids[0], tags))
+
+              rds = _obs(req, "rds")
+              at = _at_provider(rds)
+              endpoint = str(_get(at, "address") or "")
+              port = int(_get(at, "port") or 5432)
+              master_arn = _master_arn(rds)
+              if endpoint:
+                  status["endpoint"] = "%s:%s" % (endpoint, port)
+              if master_arn:
+                  status["masterUserSecretArn"] = master_arn
+
+              notes = ["attached security group %s from tags %s" % (ids[0], tags)]
+              if not endpoint:
+                  response.normal(rsp, "; ".join(notes + ["waiting for RDS endpoint"]))
+                  return
+
+              try:
+                  rotate_sgs = describe_security_groups(region, {"Tier": "rds-rotate"})
+                  node_subnets = sorted(describe_subnets(region, {"Tier": "nodes"}))
+              except Exception as exc:
+                  response.fatal(rsp, "rotation network lookup failed: %s" % exc)
+                  return
+
+              if len(rotate_sgs) != 1:
+                  response.fatal(
+                      rsp,
+                      "expected exactly 1 security group for tags {'Tier': 'rds-rotate'}, found %d: %s" % (
+                          len(rotate_sgs), rotate_sgs,
+                      ),
+                  )
+                  return
+              if not node_subnets:
+                  response.fatal(rsp, "no subnets with tag Tier=nodes for rotation Lambda")
+                  return
+
+              alphabet = string.ascii_letters + string.digits
+              app_password = "".join(secrets.choice(alphabet) for _ in range(32))
+              secret_string = json.dumps({
+                  "engine": "postgres",
+                  "host": endpoint,
+                  "port": port,
+                  "dbname": db_name,
+                  "username": app_user,
+                  "password": app_password,
+              })
+
+              rsp.desired.resources["app-secret"].resource.update({
+                  "apiVersion": "secretsmanager.aws.m.upbound.io/v1beta1",
+                  "kind": "Secret",
+                  "metadata": {
+                      "name": k8s_app_secret,
+                      "labels": {
+                          "cool.postgres/role": "app",
+                      },
+                  },
+                  "spec": {
+                      "forProvider": {
+                          "region": region,
+                          "name": app_secret_name,
+                          "recoveryWindowInDays": 0,
+                          "description": "Application user for %s; rotated by Lambda" % identifier,
+                          "tags": {
+                              "Name": app_secret_name,
+                              "Project": "cool",
+                          },
+                      },
+                      "providerConfigRef": provider,
+                  },
+              })
+
+              sv = {
+                  "apiVersion": "secretsmanager.aws.m.upbound.io/v1beta1",
+                  "kind": "SecretVersion",
+                  "metadata": {
+                      "name": k8s_app_secret,
+                  },
+                  "spec": {
+                      "forProvider": {
+                          "region": region,
+                          "secretId": app_secret_name,
+                          "versionStages": ["AWSCURRENT"],
+                      },
+                      "initProvider": {
+                          "secretString": secret_string,
+                      },
+                      "providerConfigRef": provider,
+                  },
+              }
+              if not _obs(req, "app-secret-version"):
+                  sv["spec"]["forProvider"]["secretString"] = secret_string
+              rsp.desired.resources["app-secret-version"].resource.update(sv)
+
+              fn_name = ("%s-app-rotate" % identifier)[:64]
+              stack_name = ("%s-app-rotate" % identifier)[:128]
+              cfn = "\n".join([
+                  "AWSTemplateFormatVersion: '2010-09-09'",
+                  "Transform: AWS::Serverless-2016-10-31",
+                  "Resources:",
+                  "  RotateApp:",
+                  "    Type: AWS::Serverless::Application",
+                  "    Properties:",
+                  "      Location:",
+                  "        ApplicationId: arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser",
+                  "        SemanticVersion: '1.1.671'",
+                  "      Parameters:",
+                  "        endpoint: https://secretsmanager.%s.amazonaws.com" % region,
+                  "        functionName: %s" % fn_name,
+                  "        vpcSubnetIds: '%s'" % ",".join(node_subnets),
+                  "        vpcSecurityGroupIds: '%s'" % rotate_sgs[0],
+                  "Outputs:",
+                  "  RotationLambdaARN:",
+                  "    Value: !GetAtt RotateApp.Outputs.RotationLambdaARN",
+              ])
+              rsp.desired.resources["rotate-stack"].resource.update({
+                  "apiVersion": "cloudformation.aws.m.upbound.io/v1beta1",
+                  "kind": "Stack",
+                  "metadata": {
+                      "name": stack_name,
+                  },
+                  "spec": {
+                      "forProvider": {
+                          "region": region,
+                          "name": stack_name,
+                          "capabilities": [
+                              "CAPABILITY_IAM",
+                              "CAPABILITY_NAMED_IAM",
+                              "CAPABILITY_AUTO_EXPAND",
+                              "CAPABILITY_RESOURCE_POLICY",
+                          ],
+                          "templateBody": cfn,
+                          "timeoutInMinutes": 15,
+                      },
+                      "providerConfigRef": provider,
+                  },
+              })
+
+              rsp.desired.resources["app-external-secret"].resource.update({
+                  "apiVersion": "external-secrets.io/v1",
+                  "kind": "ExternalSecret",
+                  "metadata": {
+                      "name": k8s_app_secret,
+                  },
+                  "spec": {
+                      "refreshInterval": "1h",
+                      "secretStoreRef": {
+                          "kind": "ClusterSecretStore",
+                          "name": "aws-secretsmanager",
+                      },
+                      "target": {
+                          "name": k8s_app_secret,
+                          "creationPolicy": "Owner",
+                      },
+                      "data": [
+                          {"secretKey": "username", "remoteRef": {"key": app_secret_name, "property": "username"}},
+                          {"secretKey": "password", "remoteRef": {"key": app_secret_name, "property": "password"}},
+                          {"secretKey": "host", "remoteRef": {"key": app_secret_name, "property": "host"}},
+                          {"secretKey": "port", "remoteRef": {"key": app_secret_name, "property": "port"}},
+                          {"secretKey": "dbname", "remoteRef": {"key": app_secret_name, "property": "dbname"}},
+                      ],
+                  },
+              })
+
+              if master_arn:
+                  rsp.desired.resources["master-external-secret"].resource.update({
+                      "apiVersion": "external-secrets.io/v1",
+                      "kind": "ExternalSecret",
+                      "metadata": {
+                          "name": k8s_master_secret,
+                      },
+                      "spec": {
+                          "refreshInterval": "1h",
+                          "secretStoreRef": {
+                              "kind": "ClusterSecretStore",
+                              "name": "aws-secretsmanager",
+                          },
+                          "target": {
+                              "name": k8s_master_secret,
+                              "creationPolicy": "Owner",
+                          },
+                          "data": [
+                              {"secretKey": "username", "remoteRef": {"key": master_arn, "property": "username"}},
+                              {"secretKey": "password", "remoteRef": {"key": master_arn, "property": "password"}},
+                          ],
+                      },
+                  })
+                  rsp.desired.resources["create-app-user"].resource.update({
+                      "apiVersion": "batch/v1",
+                      "kind": "Job",
+                      "metadata": {
+                          "name": "%s-create-app-user" % identifier,
+                      },
+                      "spec": {
+                          "backoffLimit": 20,
+                          "ttlSecondsAfterFinished": 86400,
+                          "template": {
+                              "spec": {
+                                  "restartPolicy": "OnFailure",
+                                  "nodeSelector": {"role": "app"},
+                                  "tolerations": [{
+                                      "key": "role",
+                                      "operator": "Equal",
+                                      "value": "app",
+                                      "effect": "NoSchedule",
+                                  }],
+                                  "containers": [{
+                                      "name": "psql",
+                                      "image": "postgres:16-alpine",
+                                      "env": [
+                                          {"name": "PGHOST", "value": endpoint},
+                                          {"name": "PGPORT", "value": str(port)},
+                                          {"name": "PGDATABASE", "value": db_name},
+                                          {
+                                              "name": "PGUSER",
+                                              "valueFrom": {
+                                                  "secretKeyRef": {
+                                                      "name": k8s_master_secret,
+                                                      "key": "username",
+                                                  },
+                                              },
+                                          },
+                                          {
+                                              "name": "PGPASSWORD",
+                                              "valueFrom": {
+                                                  "secretKeyRef": {
+                                                      "name": k8s_master_secret,
+                                                      "key": "password",
+                                                  },
+                                              },
+                                          },
+                                          {"name": "APP_USER", "value": app_user},
+                                          {
+                                              "name": "APP_PASSWORD",
+                                              "valueFrom": {
+                                                  "secretKeyRef": {
+                                                      "name": k8s_app_secret,
+                                                      "key": "password",
+                                                  },
+                                              },
+                                          },
+                                      ],
+                                      "command": ["sh", "-ec"],
+                                      "args": [
+                                          "\n".join([
+                                              "psql -v ON_ERROR_STOP=1 <<SQL",
+                                              "DO $$",
+                                              "BEGIN",
+                                              "  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$APP_USER') THEN",
+                                              "    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '$APP_USER', '$APP_PASSWORD');",
+                                              "  ELSE",
+                                              "    EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', '$APP_USER', '$APP_PASSWORD');",
+                                              "  END IF;",
+                                              "END",
+                                              "$$;",
+                                              "GRANT CONNECT ON DATABASE \"$PGDATABASE\" TO \"$APP_USER\";",
+                                              "GRANT ALL ON SCHEMA public TO \"$APP_USER\";",
+                                              "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"$APP_USER\";",
+                                              "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"$APP_USER\";",
+                                              "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"$APP_USER\";",
+                                              "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"$APP_USER\";",
+                                              "SQL",
+                                          ]),
+                                      ],
+                                  }],
+                              },
+                          },
+                      },
+                  })
+                  notes.append("creating app role %s" % app_user)
+              else:
+                  notes.append("waiting for RDS master secret in Secrets Manager")
+
+              lambda_arn = _lambda_arn(_obs(req, "rotate-stack"))
+              if _job_done(_obs(req, "create-app-user")) and lambda_arn:
+                  rsp.desired.resources["app-secret-rotation"].resource.update({
+                      "apiVersion": "secretsmanager.aws.m.upbound.io/v1beta1",
+                      "kind": "SecretRotation",
+                      "metadata": {
+                          "name": k8s_app_secret,
+                      },
+                      "spec": {
+                          "forProvider": {
+                              "region": region,
+                              "secretId": app_secret_name,
+                              "rotationLambdaArn": lambda_arn,
+                              "rotateImmediately": False,
+                              "rotationRules": [{
+                                  "automaticallyAfterDays": rotate_after,
+                              }],
+                          },
+                          "initProvider": {
+                              "rotateImmediately": True,
+                          },
+                          "providerConfigRef": provider,
+                      },
+                  })
+                  notes.append("rotation enabled every %sd" % rotate_after)
+              elif not lambda_arn:
+                  notes.append("waiting for rotation Lambda stack")
+              else:
+                  notes.append("waiting for CREATE USER job")
+
+              response.normal(rsp, "; ".join(notes))
     - step: ready
       functionRef:
         name: function-auto-ready

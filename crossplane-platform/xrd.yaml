@@ -67,6 +67,13 @@ spec:
                       additionalProperties:
                         type: string
                       description: AWS resource tags that must uniquely match one security group.
+                appUsername:
+                  type: string
+                  default: app
+                  description: Application DB user. Created once, password stored in Secrets Manager and rotated by Lambda.
+                rotateAfterDays:
+                  type: integer
+                  default: 30
             status:
               type: object
               properties:
@@ -74,3 +81,9 @@ spec:
                   type: array
                   items:
                     type: string
+                endpoint:
+                  type: string
+                masterUserSecretArn:
+                  type: string
+                appSecretName:
+                  type: string

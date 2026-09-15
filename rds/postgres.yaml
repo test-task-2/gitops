@@ -1,14 +1,6 @@
 # PostgreSQL in Terraform subnet group cool-db.
-# SG is Terraform cool-db, discovered by AWS tags (not a hardcoded sg- id).
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cool-postgres
-  namespace: data
-type: Opaque
-stringData:
-  password: "ChangeMeByAutoGen1!"
----
+# Master password is created by RDS and stored in Secrets Manager.
+# App user password is in Secrets Manager secret cool/postgres-app and rotated by Lambda.
 apiVersion: platform.cool/v1alpha1
 kind: PostgresInstance
 metadata:
@@ -23,3 +15,5 @@ spec:
   vpcSecurityGroupSelector:
     tags:
       Tier: db
+  appUsername: app
+  rotateAfterDays: 30
