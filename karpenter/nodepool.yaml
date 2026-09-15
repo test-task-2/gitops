@@ -7,8 +7,8 @@ spec:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m
   limits:
-    cpu: "4"
-    memory: 4Gi
+    cpu: "8"
+    memory: 8Gi
   template:
     metadata:
       labels:
