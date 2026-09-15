@@ -13,7 +13,7 @@ spec:
     metadata:
       labels:
         role: app
-        node-role.kubernetes.io/app: ""
+        node-role.kubernetes.io/app: "true"
     spec:
       nodeClassRef:
         group: karpenter.k8s.aws
