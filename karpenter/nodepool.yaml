@@ -3,6 +3,9 @@ kind: NodePool
 metadata:
   name: app
 spec:
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
   limits:
     cpu: "4"
     memory: 4Gi

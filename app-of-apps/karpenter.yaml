@@ -80,6 +80,25 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: karpenter.sh
+      kind: NodePool
+      jqPathExpressions:
+        - .metadata.annotations["karpenter.sh/nodepool-hash"]
+        - .metadata.annotations["karpenter.sh/nodepool-hash-version"]
+    - group: karpenter.k8s.aws
+      kind: EC2NodeClass
+      jqPathExpressions:
+        - .metadata.annotations["karpenter.k8s.aws/ec2nodeclass-hash"]
+        - .metadata.annotations["karpenter.k8s.aws/ec2nodeclass-hash-version"]
   source:
     repoURL: https://github.com/test-task-2/gitops.git
     targetRevision: HEAD
