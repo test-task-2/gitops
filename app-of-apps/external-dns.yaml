@@ -47,7 +47,6 @@ spec:
         domainFilters:
           - test-task.drunk.guru
         extraArgs:
-          cloudflare-proxied: "false"
           zone-id-filter: e7a92c9cefa2fec6d0bbd02610d1de15
         env:
           - name: CF_API_TOKEN
