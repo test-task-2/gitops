@@ -14,7 +14,9 @@ spec:
   scheme: internet-facing
   listenerConfigurations:
     - protocolPort: HTTP:80
+      alpnPolicy: None
     - protocolPort: HTTPS:443
+      alpnPolicy: None
       sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -51,7 +53,9 @@ metadata:
   namespace: kube-system
 spec:
   parentRefs:
-    - name: alb
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: alb
       sectionName: http
   rules:
     - filters:
@@ -59,3 +63,7 @@ spec:
           requestRedirect:
             scheme: https
             statusCode: 301
+      matches:
+        - path:
+            type: PathPrefix
+            value: /

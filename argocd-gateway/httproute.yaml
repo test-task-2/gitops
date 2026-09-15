@@ -5,6 +5,7 @@ metadata:
   namespace: argocd
 spec:
   targetReference:
+    group: ""
     kind: Service
     name: argocd-server
   defaultConfiguration:
@@ -19,12 +20,21 @@ metadata:
   namespace: argocd
 spec:
   parentRefs:
-    - name: alb
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: alb
       namespace: kube-system
       sectionName: https
   hostnames:
     - argocd.test-task.drunk.guru
   rules:
     - backendRefs:
-        - name: argocd-server
+        - group: ""
+          kind: Service
+          name: argocd-server
           port: 80
+          weight: 1
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
