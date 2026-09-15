@@ -42,7 +42,7 @@ spec:
                   description: RDS instance identifier. Defaults to metadata.name.
                 engineVersion:
                   type: string
-                  default: "16.6"
+                  default: "16.13"
                 instanceClass:
                   type: string
                   default: db.t3.micro

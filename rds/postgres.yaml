@@ -17,7 +17,7 @@ metadata:
 spec:
   region: us-east-1
   identifier: cool-postgres
-  engineVersion: "16.6"
+  engineVersion: "16.13"
   instanceClass: db.t3.micro
   dbSubnetGroupName: cool-db
   vpcSecurityGroupSelector:
