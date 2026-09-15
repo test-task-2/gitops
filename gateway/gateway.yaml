@@ -12,6 +12,8 @@ metadata:
   namespace: kube-system
 spec:
   scheme: internet-facing
+  securityGroups:
+    - cool-alb
   listenerConfigurations:
     - protocolPort: HTTP:80
       alpnPolicy: None
