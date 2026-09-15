@@ -15,6 +15,7 @@ spec:
         apiVersion: python.fn.crossplane.io/v1beta1
         kind: Script
         script: |
+          import base64
           import datetime
           import hashlib
           import hmac
@@ -335,15 +336,41 @@ spec:
                   response.fatal(rsp, "no subnets with tag Tier=nodes for rotation Lambda")
                   return
 
-              alphabet = string.ascii_letters + string.digits
-              app_password = "".join(secrets.choice(alphabet) for _ in range(32))
-              secret_string = json.dumps({
-                  "engine": "postgres",
-                  "host": endpoint,
-                  "port": port,
-                  "dbname": db_name,
-                  "username": app_user,
-                  "password": app_password,
+              seed_name = "%s-app-seed" % identifier
+              obs_seed = _obs(req, "app-seed")
+              secret_string = ""
+              if obs_seed:
+                  data = _get(obs_seed, "data") or {}
+                  if "secret-string" in data:
+                      secret_string = base64.b64decode(data["secret-string"]).decode()
+              if not secret_string:
+                  alphabet = string.ascii_letters + string.digits
+                  app_password = "".join(secrets.choice(alphabet) for _ in range(32))
+                  secret_string = json.dumps({
+                      "engine": "postgres",
+                      "host": endpoint,
+                      "port": port,
+                      "dbname": db_name,
+                      "username": app_user,
+                      "password": app_password,
+                  })
+              seed_obj = json.loads(secret_string)
+
+              rsp.desired.resources["app-seed"].resource.update({
+                  "apiVersion": "v1",
+                  "kind": "Secret",
+                  "metadata": {
+                      "name": seed_name,
+                  },
+                  "type": "Opaque",
+                  "stringData": {
+                      "username": seed_obj["username"],
+                      "password": seed_obj["password"],
+                      "host": str(seed_obj.get("host") or endpoint),
+                      "port": str(seed_obj.get("port") or port),
+                      "dbname": str(seed_obj.get("dbname") or db_name),
+                      "secret-string": secret_string,
+                  },
               })
 
               rsp.desired.resources["app-secret"].resource.update({
@@ -370,7 +397,7 @@ spec:
                   },
               })
 
-              sv = {
+              rsp.desired.resources["app-secret-version"].resource.update({
                   "apiVersion": "secretsmanager.aws.m.upbound.io/v1beta1",
                   "kind": "SecretVersion",
                   "metadata": {
@@ -380,17 +407,15 @@ spec:
                       "forProvider": {
                           "region": region,
                           "secretId": app_secret_name,
-                          "versionStages": ["AWSCURRENT"],
-                      },
-                      "initProvider": {
-                          "secretString": secret_string,
+                          "secretStringWoSecretRef": {
+                              "name": seed_name,
+                              "key": "secret-string",
+                          },
+                          "secretStringWoVersion": 1,
                       },
                       "providerConfigRef": provider,
                   },
-              }
-              if not _obs(req, "app-secret-version"):
-                  sv["spec"]["forProvider"]["secretString"] = secret_string
-              rsp.desired.resources["app-secret-version"].resource.update(sv)
+              })
 
               fn_name = ("%s-app-rotate" % identifier)[:64]
               stack_name = ("%s-app-rotate" % identifier)[:128]
@@ -427,7 +452,6 @@ spec:
                               "CAPABILITY_IAM",
                               "CAPABILITY_NAMED_IAM",
                               "CAPABILITY_AUTO_EXPAND",
-                              "CAPABILITY_RESOURCE_POLICY",
                           ],
                           "templateBody": cfn,
                           "timeoutInMinutes": 15,
@@ -534,7 +558,7 @@ spec:
                                               "name": "APP_PASSWORD",
                                               "valueFrom": {
                                                   "secretKeyRef": {
-                                                      "name": k8s_app_secret,
+                                                      "name": seed_name,
                                                       "key": "password",
                                                   },
                                               },
@@ -585,9 +609,9 @@ spec:
                               "secretId": app_secret_name,
                               "rotationLambdaArn": lambda_arn,
                               "rotateImmediately": False,
-                              "rotationRules": [{
+                              "rotationRules": {
                                   "automaticallyAfterDays": rotate_after,
-                              }],
+                              },
                           },
                           "initProvider": {
                               "rotateImmediately": True,
