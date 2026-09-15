@@ -15,7 +15,6 @@ spec:
   listenerConfigurations:
     - protocolPort: HTTP:80
     - protocolPort: HTTPS:443
-      defaultCertificate: arn:aws:acm:us-east-1:112334179404:certificate/7129aa18-d720-4ef6-a4df-79e0b4d64354
       sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -40,6 +39,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
+      hostname: "*.test-task.drunk.guru"
       allowedRoutes:
         namespaces:
           from: All
