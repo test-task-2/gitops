@@ -196,29 +196,14 @@ spec:
                   return ""
               if "RotationLambdaARN" in outs:
                   return str(outs["RotationLambdaARN"])
-              if "RotationLambdaArn" in outs:
-                  return str(outs["RotationLambdaArn"])
               try:
                   for item in outs:
                       key = str(_get(item, "outputKey") or _get(item, "OutputKey") or "")
                       if key in ("RotationLambdaARN", "RotationLambdaArn"):
                           return str(_get(item, "outputValue") or _get(item, "OutputValue") or "")
-                      kl = key.lower()
-                      if "lambda" in kl and "arn" in kl:
-                          return str(_get(item, "outputValue") or _get(item, "OutputValue") or "")
               except TypeError:
                   pass
-              for k in outs:
-                  kl = str(k).lower()
-                  if "lambda" in kl and "arn" in kl:
-                      return str(outs[k])
               return ""
-
-
-          def _job_done(job):
-              if not job or "status" not in job:
-                  return False
-              return int(_get(job["status"], "succeeded") or 0) >= 1
 
 
           def compose(req, rsp):
@@ -252,7 +237,6 @@ spec:
               rotate_after = int(_get(spec, "rotateAfterDays") or 30)
               app_secret_name = "cool/postgres-app"
               k8s_app_secret = "%s-app" % identifier
-              k8s_master_secret = "%s-master" % identifier
               provider = {
                   "kind": "ClusterProviderConfig",
                   "name": "default",
@@ -316,6 +300,9 @@ spec:
               if not endpoint:
                   response.normal(rsp, "; ".join(notes + ["waiting for RDS endpoint"]))
                   return
+              if not master_arn:
+                  response.normal(rsp, "; ".join(notes + ["waiting for RDS master secret in Secrets Manager"]))
+                  return
 
               try:
                   rotate_sgs = describe_security_groups(region, {"Tier": "rds-rotate"})
@@ -323,14 +310,8 @@ spec:
               except Exception as exc:
                   response.fatal(rsp, "rotation network lookup failed: %s" % exc)
                   return
-
               if len(rotate_sgs) != 1:
-                  response.fatal(
-                      rsp,
-                      "expected exactly 1 security group for tags {'Tier': 'rds-rotate'}, found %d: %s" % (
-                          len(rotate_sgs), rotate_sgs,
-                      ),
-                  )
+                  response.fatal(rsp, "expected 1 security group Tier=rds-rotate, found %s" % rotate_sgs)
                   return
               if not node_subnets:
                   response.fatal(rsp, "no subnets with tag Tier=nodes for rotation Lambda")
@@ -339,11 +320,20 @@ spec:
               seed_name = "%s-app-seed" % identifier
               obs_seed = _obs(req, "app-seed")
               secret_string = ""
+              wo_version = 1
               if obs_seed:
                   data = _get(obs_seed, "data") or {}
                   if "secret-string" in data:
                       secret_string = base64.b64decode(data["secret-string"]).decode()
-              if not secret_string:
+              if secret_string:
+                  seed_obj = json.loads(secret_string)
+                  if seed_obj.get("masterarn") != master_arn:
+                      seed_obj["masterarn"] = master_arn
+                      seed_obj["host"] = endpoint
+                      seed_obj["port"] = port
+                      secret_string = json.dumps(seed_obj)
+                      wo_version = 2
+              else:
                   alphabet = string.ascii_letters + string.digits
                   app_password = "".join(secrets.choice(alphabet) for _ in range(32))
                   secret_string = json.dumps({
@@ -353,6 +343,7 @@ spec:
                       "dbname": db_name,
                       "username": app_user,
                       "password": app_password,
+                      "masterarn": master_arn,
                   })
               seed_obj = json.loads(secret_string)
 
@@ -387,7 +378,7 @@ spec:
                           "region": region,
                           "name": app_secret_name,
                           "recoveryWindowInDays": 0,
-                          "description": "Application user for %s; rotated by Lambda" % identifier,
+                          "description": "Application user for %s; created and rotated by Lambda using the RDS master secret" % identifier,
                           "tags": {
                               "Name": app_secret_name,
                               "Project": "cool",
@@ -411,50 +402,7 @@ spec:
                               "name": seed_name,
                               "key": "secret-string",
                           },
-                          "secretStringWoVersion": 1,
-                      },
-                      "providerConfigRef": provider,
-                  },
-              })
-
-              fn_name = ("%s-app-rotate" % identifier)[:64]
-              stack_name = ("%s-app-rotate" % identifier)[:128]
-              cfn = "\n".join([
-                  "AWSTemplateFormatVersion: '2010-09-09'",
-                  "Transform: AWS::Serverless-2016-10-31",
-                  "Resources:",
-                  "  RotateApp:",
-                  "    Type: AWS::Serverless::Application",
-                  "    Properties:",
-                  "      Location:",
-                  "        ApplicationId: arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser",
-                  "        SemanticVersion: '1.1.671'",
-                  "      Parameters:",
-                  "        endpoint: https://secretsmanager.%s.amazonaws.com" % region,
-                  "        functionName: %s" % fn_name,
-                  "        vpcSubnetIds: '%s'" % ",".join(node_subnets),
-                  "        vpcSecurityGroupIds: '%s'" % rotate_sgs[0],
-                  "Outputs:",
-                  "  RotationLambdaARN:",
-                  "    Value: !GetAtt RotateApp.Outputs.RotationLambdaARN",
-              ])
-              rsp.desired.resources["rotate-stack"].resource.update({
-                  "apiVersion": "cloudformation.aws.m.upbound.io/v1beta1",
-                  "kind": "Stack",
-                  "metadata": {
-                      "name": stack_name,
-                  },
-                  "spec": {
-                      "forProvider": {
-                          "region": region,
-                          "name": stack_name,
-                          "capabilities": [
-                              "CAPABILITY_IAM",
-                              "CAPABILITY_NAMED_IAM",
-                              "CAPABILITY_AUTO_EXPAND",
-                          ],
-                          "templateBody": cfn,
-                          "timeoutInMinutes": 15,
+                          "secretStringWoVersion": wo_version,
                       },
                       "providerConfigRef": provider,
                   },
@@ -486,117 +434,134 @@ spec:
                   },
               })
 
-              if master_arn:
-                  rsp.desired.resources["master-external-secret"].resource.update({
-                      "apiVersion": "external-secrets.io/v1",
-                      "kind": "ExternalSecret",
-                      "metadata": {
-                          "name": k8s_master_secret,
-                      },
-                      "spec": {
-                          "refreshInterval": "1h",
-                          "secretStoreRef": {
-                              "kind": "ClusterSecretStore",
-                              "name": "aws-secretsmanager",
-                          },
-                          "target": {
-                              "name": k8s_master_secret,
-                              "creationPolicy": "Owner",
-                          },
-                          "data": [
-                              {"secretKey": "username", "remoteRef": {"key": master_arn, "property": "username"}},
-                              {"secretKey": "password", "remoteRef": {"key": master_arn, "property": "password"}},
+              fn_name = ("%s-app-rotate" % identifier)[:64]
+              stack_name = ("%s-app-rotate" % identifier)[:128]
+              lambda_src = "\n".join([
+                  "import json,os,sys,ssl,boto3,urllib.request,zipfile,io",
+                  "P='/tmp/p'",
+                  "def w():",
+                  " sys.path.insert(0,P)",
+                  " if os.path.exists(P+'/pg8000'):return",
+                  " os.makedirs(P,exist_ok=True)",
+                  " for n in('six','asn1crypto','python-dateutil','scramp','pg8000'):",
+                  "  j=json.load(urllib.request.urlopen('https://pypi.org/pypi/%s/json'%n,timeout=15))",
+                  "  u=[x['url'] for x in j['urls'] if x['packagetype']=='wheel' and 'none-any' in x['filename']][0]",
+                  "  zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(u,timeout=15).read())).extractall(P)",
+                  "w()",
+                  "import pg8000.native as pg",
+                  "sm=boto3.client('secretsmanager',endpoint_url=os.environ.get('SECRETS_MANAGER_ENDPOINT'))",
+                  "def G(a,s,t=None):",
+                  " k={'SecretId':a,'VersionStage':s}",
+                  " if t:k['VersionId']=t",
+                  " return json.loads(sm.get_secret_value(**k)['SecretString'])",
+                  "def C(d):",
+                  " x=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);x.check_hostname=0;x.verify_mode=ssl.CERT_NONE",
+                  " try:return pg.Connection(user=d['username'],password=d['password'],host=d['host'],port=int(d.get('port')or 5432),database=d.get('dbname')or'postgres',ssl_context=x,timeout=10)",
+                  " except:return",
+                  "def handler(e,c):",
+                  " a,t,s=e['SecretId'],e['ClientRequestToken'],e['Step']",
+                  " m=sm.describe_secret(SecretId=a);v=m['VersionIdsToStages']",
+                  " if t not in v or 'AWSCURRENT' in v[t]:return",
+                  " if 'AWSPENDING' not in v[t]:raise ValueError('stage')",
+                  " if s=='createSecret':",
+                  "  try:G(a,'AWSPENDING',t);return",
+                  "  except Exception:pass",
+                  "  u=G(a,'AWSCURRENT');u['password']=sm.get_random_password(PasswordLength=32,ExcludeCharacters=':/@\"\\\\',ExcludePunctuation=True)['RandomPassword']",
+                  "  sm.put_secret_value(SecretId=a,ClientRequestToken=t,SecretString=json.dumps(u),VersionStages=['AWSPENDING']);return",
+                  " if s=='setSecret':",
+                  "  p=G(a,'AWSPENDING',t)",
+                  "  if C(p):return",
+                  "  mst=G(p['masterarn'],'AWSCURRENT');q=dict(p);q['username']=mst['username'];q['password']=mst['password']",
+                  "  n=C(q)",
+                  "  if not n:raise ValueError('master')",
+                  "  u,pw,db=p['username'],p['password'],p.get('dbname')or'app'",
+                  "  ident=lambda x:n.run('SELECT quote_ident(:n)',n=x)[0][0]",
+                  "  iu,idb=ident(u),ident(db)",
+                  "  n.run(('ALTER' if n.run('SELECT 1 FROM pg_roles WHERE rolname=:u',u=u) else 'CREATE')+' ROLE %s WITH LOGIN PASSWORD :p'%iu,p=pw)",
+                  "  n.run('GRANT CONNECT ON DATABASE %s TO %s'%(idb,iu));n.run('GRANT ALL ON SCHEMA public TO %s'%iu);n.close();return",
+                  " if s=='testSecret':",
+                  "  if not C(G(a,'AWSPENDING',t)):raise ValueError('login')",
+                  " if s=='finishSecret':",
+                  "  cur=None",
+                  "  for i,st in v.items():",
+                  "   if 'AWSCURRENT' in st:cur=i;break",
+                  "  sm.update_secret_version_stage(SecretId=a,VersionStage='AWSCURRENT',MoveToVersionId=t,RemoveFromVersionId=cur)",
+              ])
+              zip_lines = "\n".join(["          " + ln for ln in lambda_src.split("\n")])
+              cfn = "\n".join([
+                  "AWSTemplateFormatVersion: '2010-09-09'",
+                  "Resources:",
+                  "  RotateRole:",
+                  "    Type: AWS::IAM::Role",
+                  "    Properties:",
+                  "      AssumeRolePolicyDocument:",
+                  "        Version: '2012-10-17'",
+                  "        Statement:",
+                  "          - Effect: Allow",
+                  "            Principal: {Service: lambda.amazonaws.com}",
+                  "            Action: sts:AssumeRole",
+                  "      ManagedPolicyArns:",
+                  "        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                  "      Policies:",
+                  "        - PolicyName: rotate",
+                  "          PolicyDocument:",
+                  "            Version: '2012-10-17'",
+                  "            Statement:",
+                  "              - Effect: Allow",
+                  "                Action: [secretsmanager:DescribeSecret, secretsmanager:GetSecretValue, secretsmanager:PutSecretValue, secretsmanager:UpdateSecretVersionStage, secretsmanager:GetRandomPassword]",
+                  "                Resource: '*'",
+                  "  RotateFn:",
+                  "    Type: AWS::Lambda::Function",
+                  "    Properties:",
+                  "      FunctionName: %s" % fn_name,
+                  "      Runtime: python3.12",
+                  "      Handler: index.handler",
+                  "      Architectures: [arm64]",
+                  "      Timeout: 60",
+                  "      MemorySize: 256",
+                  "      Role: !GetAtt RotateRole.Arn",
+                  "      Environment:",
+                  "        Variables:",
+                  "          SECRETS_MANAGER_ENDPOINT: https://secretsmanager.%s.amazonaws.com" % region,
+                  "      VpcConfig:",
+                  "        SubnetIds: [%s]" % ", ".join(node_subnets),
+                  "        SecurityGroupIds: [%s]" % rotate_sgs[0],
+                  "      Code:",
+                  "        ZipFile: |",
+                  zip_lines,
+                  "  RotatePerm:",
+                  "    Type: AWS::Lambda::Permission",
+                  "    Properties:",
+                  "      FunctionName: !Ref RotateFn",
+                  "      Action: lambda:InvokeFunction",
+                  "      Principal: secretsmanager.amazonaws.com",
+                  "Outputs:",
+                  "  RotationLambdaARN:",
+                  "    Value: !GetAtt RotateFn.Arn",
+              ])
+              rsp.desired.resources["rotate-stack"].resource.update({
+                  "apiVersion": "cloudformation.aws.m.upbound.io/v1beta1",
+                  "kind": "Stack",
+                  "metadata": {
+                      "name": stack_name,
+                  },
+                  "spec": {
+                      "forProvider": {
+                          "region": region,
+                          "name": stack_name,
+                          "capabilities": [
+                              "CAPABILITY_IAM",
+                              "CAPABILITY_NAMED_IAM",
                           ],
+                          "templateBody": cfn,
+                          "timeoutInMinutes": 15,
                       },
-                  })
-                  rsp.desired.resources["create-app-user"].resource.update({
-                      "apiVersion": "batch/v1",
-                      "kind": "Job",
-                      "metadata": {
-                          "name": "%s-create-app-user" % identifier,
-                      },
-                      "spec": {
-                          "backoffLimit": 20,
-                          "ttlSecondsAfterFinished": 86400,
-                          "template": {
-                              "spec": {
-                                  "restartPolicy": "OnFailure",
-                                  "nodeSelector": {"role": "app"},
-                                  "tolerations": [{
-                                      "key": "role",
-                                      "operator": "Equal",
-                                      "value": "app",
-                                      "effect": "NoSchedule",
-                                  }],
-                                  "containers": [{
-                                      "name": "psql",
-                                      "image": "postgres:16-alpine",
-                                      "env": [
-                                          {"name": "PGHOST", "value": endpoint},
-                                          {"name": "PGPORT", "value": str(port)},
-                                          {"name": "PGDATABASE", "value": db_name},
-                                          {
-                                              "name": "PGUSER",
-                                              "valueFrom": {
-                                                  "secretKeyRef": {
-                                                      "name": k8s_master_secret,
-                                                      "key": "username",
-                                                  },
-                                              },
-                                          },
-                                          {
-                                              "name": "PGPASSWORD",
-                                              "valueFrom": {
-                                                  "secretKeyRef": {
-                                                      "name": k8s_master_secret,
-                                                      "key": "password",
-                                                  },
-                                              },
-                                          },
-                                          {"name": "APP_USER", "value": app_user},
-                                          {
-                                              "name": "APP_PASSWORD",
-                                              "valueFrom": {
-                                                  "secretKeyRef": {
-                                                      "name": seed_name,
-                                                      "key": "password",
-                                                  },
-                                              },
-                                          },
-                                      ],
-                                      "command": ["sh", "-ec"],
-                                      "args": [
-                                          "\n".join([
-                                              "psql -v ON_ERROR_STOP=1 <<SQL",
-                                              "DO $$",
-                                              "BEGIN",
-                                              "  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$APP_USER') THEN",
-                                              "    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '$APP_USER', '$APP_PASSWORD');",
-                                              "  ELSE",
-                                              "    EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', '$APP_USER', '$APP_PASSWORD');",
-                                              "  END IF;",
-                                              "END",
-                                              "$$;",
-                                              "GRANT CONNECT ON DATABASE \"$PGDATABASE\" TO \"$APP_USER\";",
-                                              "GRANT ALL ON SCHEMA public TO \"$APP_USER\";",
-                                              "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"$APP_USER\";",
-                                              "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"$APP_USER\";",
-                                              "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"$APP_USER\";",
-                                              "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"$APP_USER\";",
-                                              "SQL",
-                                          ]),
-                                      ],
-                                  }],
-                              },
-                          },
-                      },
-                  })
-                  notes.append("creating app role %s" % app_user)
-              else:
-                  notes.append("waiting for RDS master secret in Secrets Manager")
+                      "providerConfigRef": provider,
+                  },
+              })
 
               lambda_arn = _lambda_arn(_obs(req, "rotate-stack"))
-              if _job_done(_obs(req, "create-app-user")) and lambda_arn:
+              if lambda_arn:
                   rsp.desired.resources["app-secret-rotation"].resource.update({
                       "apiVersion": "secretsmanager.aws.m.upbound.io/v1beta1",
                       "kind": "SecretRotation",
@@ -619,13 +584,12 @@ spec:
                           "providerConfigRef": provider,
                       },
                   })
-                  notes.append("rotation enabled every %sd" % rotate_after)
-              elif not lambda_arn:
-                  notes.append("waiting for rotation Lambda stack")
+                  notes.append("app user %s created/rotated by Lambda using master secret" % app_user)
               else:
-                  notes.append("waiting for CREATE USER job")
+                  notes.append("waiting for Crossplane rotation Lambda stack")
 
               response.normal(rsp, "; ".join(notes))
+              return
     - step: ready
       functionRef:
         name: function-auto-ready
