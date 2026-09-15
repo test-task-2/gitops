@@ -37,3 +37,8 @@ spec:
         releaseName: voting-app
         valueFiles:
           - $values/values-aws.yaml
+        valuesObject:
+          externalSecret:
+            remoteKey: cool/postgres-app
+            redis:
+              remoteKey: cool/redis
