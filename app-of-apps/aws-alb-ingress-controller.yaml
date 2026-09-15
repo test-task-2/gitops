@@ -4,7 +4,7 @@ metadata:
   name: aws-alb-ingress-controller
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -35,11 +35,11 @@ spec:
           clusterName: cool
           region: us-east-1
           replicaCount: 1
+          nodeSelector:
+            role: system
           serviceAccount:
             create: true
             name: aws-load-balancer-controller
-            annotations:
-              eks.amazonaws.com/role-arn: arn:aws:iam::767398111127:role/cool-aws-lbc
           ingressClass: alb
           createIngressClassResource: true
           controllerConfig:

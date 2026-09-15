@@ -5,7 +5,7 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-family-aws:v2.7.2
   runtimeConfigRef:
-    name: irsa
+    name: pod-identity
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
@@ -14,7 +14,7 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-ec2:v2.7.2
   runtimeConfigRef:
-    name: irsa
+    name: pod-identity
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
@@ -23,7 +23,7 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-rds:v2.7.2
   runtimeConfigRef:
-    name: irsa
+    name: pod-identity
 ---
 apiVersion: aws.m.upbound.io/v1beta1
 kind: ClusterProviderConfig
@@ -31,4 +31,4 @@ metadata:
   name: default
 spec:
   credentials:
-    source: IRSA
+    source: PodIdentity

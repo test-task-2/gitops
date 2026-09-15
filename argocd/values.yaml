@@ -1,0 +1,28 @@
+# Installed by Terraform (Iac/terraform helm_release.argocd). Keep in sync with Iac/terraform/argocd-values.yaml.
+global:
+  domain: argocd.test-task.drunk.guru
+  nodeSelector:
+    kubernetes.io/os: linux
+    role: system
+
+configs:
+  params:
+    "server.insecure": true
+
+server:
+  replicas: 1
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false

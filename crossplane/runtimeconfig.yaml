@@ -1,0 +1,17 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: pod-identity
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-aws
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          nodeSelector:
+            role: system
+          containers:
+            - name: package-runtime
