@@ -58,14 +58,10 @@ spec:
           volumes:
             - name: aws-cli
               emptyDir: {}
-            - name: tmp
-              emptyDir: {}
           volumeMounts:
             - name: aws-cli
               mountPath: /aws-cli
               readOnly: true
-            - name: tmp
-              mountPath: /tmp
           authScripts:
             enabled: true
             scripts:
