@@ -25,32 +25,36 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-  source:
-    repoURL: https://kubernetes-sigs.github.io/external-dns
-    chart: external-dns
-    targetRevision: 1.19.0
-    helm:
-      releaseName: external-dns
-      values: |
-        replicaCount: 1
-        nodeSelector:
-          role: system
-        serviceAccount:
-          create: true
-          name: external-dns
-        provider:
-          name: cloudflare
-        sources:
-          - gateway-httproute
-        policy: sync
-        txtOwnerId: cool
-        domainFilters:
-          - test-task.drunk.guru
-        extraArgs:
-          zone-id-filter: e7a92c9cefa2fec6d0bbd02610d1de15
-        env:
-          - name: CF_API_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: cloudflare-api-token
-                key: api-token
+      - SkipDryRunOnMissingResource=true
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/external-dns
+      chart: external-dns
+      targetRevision: 1.19.0
+      helm:
+        releaseName: external-dns
+        values: |
+          replicaCount: 1
+          nodeSelector:
+            role: system
+          serviceAccount:
+            create: true
+            name: external-dns
+          provider:
+            name: cloudflare
+          sources:
+            - gateway-httproute
+          policy: sync
+          txtOwnerId: cool
+          domainFilters:
+            - test-task.drunk.guru
+          extraArgs:
+            zone-id-filter: e7a92c9cefa2fec6d0bbd02610d1de15
+          env:
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-api-token
+                  key: api-token
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      path: external-dns
