@@ -37,38 +37,65 @@ spec:
             - --interval
             - 2m
           extraEnv:
-            - name: HOME
-              value: /tmp
             - name: AWS_REGION
               value: us-east-1
             - name: AWS_DEFAULT_REGION
               value: us-east-1
-          initContainers:
-            - name: copy-aws-cli
-              image: public.ecr.aws/aws-cli/aws-cli:2.31.18
-              command: [/bin/sh, -c, cp -a /usr/local/aws-cli /aws-cli/aws-cli]
-              securityContext:
-                runAsNonRoot: true
-                runAsUser: 1000
-                runAsGroup: 1000
-                allowPrivilegeEscalation: false
-              volumeMounts:
-                - name: aws-cli
-                  mountPath: /aws-cli
-          volumes:
-            - name: aws-cli
-              emptyDir: {}
-          volumeMounts:
-            - name: aws-cli
-              mountPath: /aws-cli
-              readOnly: true
           authScripts:
             enabled: true
             scripts:
               ecr.sh: |
-                #!/bin/sh
-                set -eu
-                echo "AWS:$(/aws-cli/aws-cli/v2/current/bin/aws ecr get-login-password --region us-east-1)"
+                #!/usr/bin/python3
+                import base64, hashlib, hmac, json, os, urllib.request
+                from datetime import datetime, timezone
+                region = os.environ.get("AWS_REGION", "us-east-1")
+                token = open(os.environ["AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE"]).read().strip()
+                req = urllib.request.Request(
+                    os.environ["AWS_CONTAINER_CREDENTIALS_FULL_URI"],
+                    headers={"Authorization": token},
+                )
+                creds = json.load(urllib.request.urlopen(req, timeout=5))
+                ak, sk, st = creds["AccessKeyId"], creds["SecretAccessKey"], creds["Token"]
+                service, host = "ecr", f"api.ecr.{region}.amazonaws.com"
+                amz_date = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                datestamp = amz_date[:8]
+                payload, payload_hash = "{}", hashlib.sha256(b"{}").hexdigest()
+                canonical_headers = (
+                    f"content-type:application/x-amz-json-1.1\n"
+                    f"host:{host}\n"
+                    f"x-amz-date:{amz_date}\n"
+                    f"x-amz-security-token:{st}\n"
+                    f"x-amz-target:AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken\n"
+                )
+                signed_headers = "content-type;host;x-amz-date;x-amz-security-token;x-amz-target"
+                canonical_request = "\n".join(["POST", "/", "", canonical_headers, signed_headers, payload_hash])
+                scope = f"{datestamp}/{region}/{service}/aws4_request"
+                string_to_sign = "\n".join([
+                    "AWS4-HMAC-SHA256", amz_date, scope,
+                    hashlib.sha256(canonical_request.encode()).hexdigest(),
+                ])
+                def sign(key, msg):
+                    return hmac.new(key, msg.encode() if isinstance(msg, str) else msg, hashlib.sha256).digest()
+                k = sign(("AWS4" + sk).encode(), datestamp)
+                k = sign(k, region)
+                k = sign(k, service)
+                k = sign(k, "aws4_request")
+                sig = hmac.new(k, string_to_sign.encode(), hashlib.sha256).hexdigest()
+                req = urllib.request.Request(
+                    f"https://{host}/", data=payload.encode(), method="POST",
+                    headers={
+                        "Content-Type": "application/x-amz-json-1.1",
+                        "X-Amz-Date": amz_date,
+                        "X-Amz-Security-Token": st,
+                        "X-Amz-Target": "AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken",
+                        "Authorization": (
+                            f"AWS4-HMAC-SHA256 Credential={ak}/{scope}, "
+                            f"SignedHeaders={signed_headers}, Signature={sig}"
+                        ),
+                    },
+                )
+                out = json.load(urllib.request.urlopen(req, timeout=10))
+                print(base64.b64decode(out["authorizationData"][0]["authorizationToken"]).decode())
           config:
             registries:
               - name: ecr
