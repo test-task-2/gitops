@@ -1,0 +1,77 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argocd-image-updater
+      targetRevision: 1.3.1
+      helm:
+        releaseName: argocd-image-updater
+        values: |
+          replicaCount: 1
+          nodeSelector:
+            role: system
+          serviceAccount:
+            create: true
+            name: argocd-image-updater
+          extraArgs:
+            - --interval
+            - 2m
+          extraEnv:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+          initContainers:
+            - name: copy-aws-cli
+              image: public.ecr.aws/aws-cli/aws-cli:2.31.18
+              command: [cp, /usr/local/bin/aws, /aws-cli/aws]
+              volumeMounts:
+                - name: aws-cli
+                  mountPath: /aws-cli
+          volumes:
+            - name: aws-cli
+              emptyDir: {}
+          volumeMounts:
+            - name: aws-cli
+              mountPath: /aws-cli
+              readOnly: true
+          authScripts:
+            enabled: true
+            scripts:
+              ecr.sh: |
+                #!/bin/sh
+                set -eu
+                echo "AWS:$(/aws-cli/aws ecr get-login-password --region us-east-1)"
+          config:
+            registries:
+              - name: ecr
+                api_url: https://112334179404.dkr.ecr.us-east-1.amazonaws.com
+                prefix: 112334179404.dkr.ecr.us-east-1.amazonaws.com
+                ping: yes
+                credentials: ext:/scripts/ecr.sh
+                credsexpire: 10h
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      path: argocd-image-updater
+      helm:
+        releaseName: voting-app-image-updater

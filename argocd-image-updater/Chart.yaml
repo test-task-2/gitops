@@ -1,0 +1,5 @@
+apiVersion: v2
+name: argocd-image-updater
+description: ImageUpdater CRs for applications watched by Argo CD Image Updater
+type: application
+version: 0.1.0

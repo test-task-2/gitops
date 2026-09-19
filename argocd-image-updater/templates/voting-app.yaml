@@ -1,0 +1,33 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: voting-app
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: argocd
+  commonUpdateSettings:
+    updateStrategy: newest-build
+    forceUpdate: true
+    allowTags: regexp:^[0-9a-f]{7,40}$
+  applicationRefs:
+    - namePattern: voting-app
+      images:
+        - alias: vote
+          imageName: 112334179404.dkr.ecr.us-east-1.amazonaws.com/cool/vote
+          manifestTargets:
+            helm:
+              name: vote.image.repository
+              tag: vote.image.tag
+        - alias: result
+          imageName: 112334179404.dkr.ecr.us-east-1.amazonaws.com/cool/result
+          manifestTargets:
+            helm:
+              name: result.image.repository
+              tag: result.image.tag
+        - alias: worker
+          imageName: 112334179404.dkr.ecr.us-east-1.amazonaws.com/cool/worker
+          manifestTargets:
+            helm:
+              name: worker.image.repository
+              tag: worker.image.tag
