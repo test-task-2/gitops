@@ -44,7 +44,12 @@ spec:
           initContainers:
             - name: copy-aws-cli
               image: public.ecr.aws/aws-cli/aws-cli:2.31.18
-              command: [cp, /usr/local/bin/aws, /aws-cli/aws]
+              command: [/bin/sh, -c, cp -a /usr/local/aws-cli /aws-cli/aws-cli]
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                allowPrivilegeEscalation: false
               volumeMounts:
                 - name: aws-cli
                   mountPath: /aws-cli
@@ -61,7 +66,7 @@ spec:
               ecr.sh: |
                 #!/bin/sh
                 set -eu
-                echo "AWS:$(/aws-cli/aws ecr get-login-password --region us-east-1)"
+                echo "AWS:$(/aws-cli/aws-cli/v2/current/bin/aws ecr get-login-password --region us-east-1)"
           config:
             registries:
               - name: ecr
