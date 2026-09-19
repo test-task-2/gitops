@@ -10,6 +10,8 @@ spec:
     updateStrategy: newest-build
     forceUpdate: true
     allowTags: regexp:^[0-9a-f]{7,40}$
+    platforms:
+      - linux/arm64
     pullSecret: ext:/scripts/ecr-login.sh
   applicationRefs:
     - namePattern: voting-app
