@@ -71,6 +71,12 @@ spec:
               role: system
             persistence:
               enabled: false
+            extraVolumes:
+              - name: storage
+                emptyDir: {}
+            extraVolumeMounts:
+              - name: storage
+                mountPath: /var/loki
             resources:
               requests:
                 cpu: 100m
