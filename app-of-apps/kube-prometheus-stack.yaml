@@ -88,6 +88,15 @@ spec:
                 jsonData:
                   authType: default
                   defaultRegion: us-east-1
+              - name: Loki
+                type: loki
+                uid: loki
+                access: proxy
+                url: http://loki.monitoring.svc:3100
+                jsonData:
+                  maxLines: 1000
+                  # Prod: point this at the Loki gateway or Grafana Cloud Logs.
+                  # url: http://loki-gateway.monitoring.svc/
             dashboardProviders:
               dashboardproviders.yaml:
                 apiVersion: 1
