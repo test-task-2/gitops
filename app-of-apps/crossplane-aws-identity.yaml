@@ -1,33 +1,31 @@
-# Disabled: Crossplane teardown. Uncomment this Application to re-enable.
-#
-# apiVersion: argoproj.io/v1alpha1
-# kind: Application
-# metadata:
-#   name: crossplane-aws-identity
-#   namespace: argocd
-#   annotations:
-#     argocd.argoproj.io/sync-wave: "3"
-#   finalizers:
-#     - resources-finalizer.argocd.argoproj.io
-# spec:
-#   project: default
-#   destination:
-#     server: https://kubernetes.default.svc
-#     namespace: crossplane-system
-#   syncPolicy:
-#     automated:
-#       prune: true
-#       selfHeal: true
-#     retry:
-#       limit: 20
-#       backoff:
-#         duration: 10s
-#         factor: 2
-#         maxDuration: 3m
-#     syncOptions:
-#       - ServerSideApply=true
-#       - SkipDryRunOnMissingResource=true
-#   source:
-#     repoURL: https://github.com/test-task-2/gitops.git
-#     targetRevision: HEAD
-#     path: crossplane
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-aws-identity
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crossplane-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 20
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  source:
+    repoURL: https://github.com/test-task-2/gitops.git
+    targetRevision: HEAD
+    path: crossplane
