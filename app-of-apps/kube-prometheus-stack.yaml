@@ -83,10 +83,37 @@ spec:
             additionalDataSources:
               - name: CloudWatch
                 type: cloudwatch
+                uid: cloudwatch
                 access: proxy
                 jsonData:
                   authType: default
                   defaultRegion: us-east-1
+            dashboardProviders:
+              dashboardproviders.yaml:
+                apiVersion: 1
+                providers:
+                  - name: aws
+                    orgId: 1
+                    folder: AWS
+                    type: file
+                    disableDeletion: false
+                    editable: true
+                    options:
+                      path: /var/lib/grafana/dashboards/aws
+            dashboards:
+              aws:
+                alb:
+                  gnetId: 650
+                  revision: 9
+                  datasource: CloudWatch
+                rds:
+                  gnetId: 11803
+                  revision: 6
+                  datasource: CloudWatch
+                elasticache:
+                  gnetId: 24103
+                  revision: 1
+                  datasource: CloudWatch
 
           prometheusOperator:
             nodeSelector:
