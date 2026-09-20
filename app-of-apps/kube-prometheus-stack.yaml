@@ -113,7 +113,13 @@ spec:
                 elasticache:
                   gnetId: 24103
                   revision: 1
-                  datasource: CloudWatch
+                  datasource:
+                    - name: DS_CW-TEST-DEV
+                      value: cloudwatch
+                    - name: DS_CW-DEV
+                      value: cloudwatch
+                    - name: DS_EXPRESSION
+                      value: __expr__
 
           prometheusOperator:
             nodeSelector:
