@@ -59,3 +59,20 @@ metadata:
 spec:
   credentials:
     source: PodIdentity
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-helm
+spec:
+  package: xpkg.upbound.io/upbound/provider-helm:v1.4.2
+  runtimeConfigRef:
+    name: provider-helm
+---
+apiVersion: helm.m.crossplane.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: InjectedIdentity
