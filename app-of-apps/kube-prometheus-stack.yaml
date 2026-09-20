@@ -1,0 +1,141 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 20
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 91.4.1
+      helm:
+        releaseName: kube-prometheus-stack
+        values: |
+          alertmanager:
+            enabled: false
+
+          # EKS hides etcd / scheduler / controller-manager.
+          kubeEtcd:
+            enabled: false
+          kubeControllerManager:
+            enabled: false
+          kubeScheduler:
+            enabled: false
+          windowsMonitoring:
+            enabled: false
+
+          defaultRules:
+            rules:
+              alertmanager: false
+              etcd: false
+              kubeControllerManager: false
+              kubeSchedulerAlerting: false
+              kubeSchedulerRecording: false
+              windows: false
+
+          grafana:
+            enabled: true
+            admin:
+              existingSecret: grafana-admin
+              userKey: admin-user
+              passwordKey: admin-password
+            serviceAccount:
+              create: true
+              name: grafana
+            ingress:
+              enabled: false
+            persistence:
+              enabled: false
+            nodeSelector:
+              role: system
+            grafana.ini:
+              server:
+                domain: grafana.test-task.drunk.guru
+                root_url: https://grafana.test-task.drunk.guru
+              analytics:
+                check_for_updates: false
+            sidecar:
+              datasources:
+                alertmanager:
+                  enabled: false
+            additionalDataSources:
+              - name: CloudWatch
+                type: cloudwatch
+                access: proxy
+                jsonData:
+                  authType: default
+                  defaultRegion: us-east-1
+
+          prometheusOperator:
+            nodeSelector:
+              role: system
+            admissionWebhooks:
+              patch:
+                nodeSelector:
+                  role: system
+
+          kube-state-metrics:
+            nodeSelector:
+              role: system
+
+          prometheus-node-exporter:
+            tolerations:
+              - key: role
+                operator: Equal
+                value: app
+                effect: NoSchedule
+
+          prometheus:
+            ingress:
+              enabled: false
+            prometheusSpec:
+              replicas: 1
+              retention: 24h
+              walCompression: true
+              nodeSelector:
+                role: system
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  memory: 1536Mi
+              # Discover ServiceMonitors/PodMonitors in any namespace (vote/result later).
+              serviceMonitorSelectorNilUsesHelmValues: false
+              podMonitorSelectorNilUsesHelmValues: false
+              # Local emptyDir only. No PVC (cluster has no EBS CSI).
+              # Prod-ready: keep this Prometheus as a short-retention scraper and
+              # remote_write to Grafana Mimir (S3-backed, multi-tenant). Then drop
+              # local retention to ~2h and point Grafana at the Mimir query frontend.
+              # remoteWrite:
+              #   - url: http://mimir-distributed-nginx.mimir.svc:80/api/v1/push
+              # Grafana additionalDataSources:
+              #   - name: Mimir
+              #     type: prometheus
+              #     url: http://mimir-distributed-nginx.mimir.svc:80/prometheus
+              #     isDefault: true
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      path: kube-prometheus-stack
