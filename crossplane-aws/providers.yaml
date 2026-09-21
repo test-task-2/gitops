@@ -10,36 +10,9 @@ spec:
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-ec2
-spec:
-  package: xpkg.upbound.io/upbound/provider-aws-ec2:v2.7.2
-  runtimeConfigRef:
-    name: pod-identity
----
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
   name: provider-aws-rds
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-rds:v2.7.2
-  runtimeConfigRef:
-    name: pod-identity
----
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: provider-aws-secretsmanager
-spec:
-  package: xpkg.upbound.io/upbound/provider-aws-secretsmanager:v2.7.2
-  runtimeConfigRef:
-    name: pod-identity
----
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: provider-aws-cloudformation
-spec:
-  package: xpkg.upbound.io/upbound/provider-aws-cloudformation:v2.7.2
   runtimeConfigRef:
     name: pod-identity
 ---
@@ -59,20 +32,3 @@ metadata:
 spec:
   credentials:
     source: PodIdentity
----
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: provider-helm
-spec:
-  package: xpkg.upbound.io/upbound/provider-helm:v1.4.2
-  runtimeConfigRef:
-    name: provider-helm
----
-apiVersion: helm.m.crossplane.io/v1beta1
-kind: ClusterProviderConfig
-metadata:
-  name: default
-spec:
-  credentials:
-    source: InjectedIdentity

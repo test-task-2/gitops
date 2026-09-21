@@ -1,6 +1,5 @@
 # PostgreSQL in Terraform subnet group cool-db.
 # Master password is created by RDS and stored in Secrets Manager.
-# App user password is in Secrets Manager secret cool/postgres-app and rotated by Lambda.
 apiVersion: platform.cool/v1alpha1
 kind: PostgresInstance
 metadata:
@@ -15,5 +14,3 @@ spec:
   vpcSecurityGroupSelector:
     tags:
       Tier: db
-  appUsername: app
-  rotateAfterDays: 30

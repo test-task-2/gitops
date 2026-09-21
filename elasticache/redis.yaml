@@ -1,4 +1,4 @@
-# Redis in Terraform subnet group cool-redis. Connection is stored in Secrets Manager cool/redis.
+# Redis in Terraform subnet group cool-redis.
 apiVersion: platform.cool/v1alpha1
 kind: RedisInstance
 metadata:
