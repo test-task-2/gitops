@@ -25,6 +25,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - ServerSideDiff=true
       - SkipDryRunOnMissingResource=true
   sources:
     - repoURL: https://github.com/test-task-2/example-voting-app.git
