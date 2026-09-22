@@ -43,7 +43,7 @@ spec:
     parameterGroupNameRef:
       name: voting-postgres16
     vpcSecurityGroupIdRefs:
-      - name: voting-db
+      - name: cool-db
     publiclyAccessible: false
     backupRetentionPeriod: 0
     skipFinalSnapshot: true
