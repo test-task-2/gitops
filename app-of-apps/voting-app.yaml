@@ -30,6 +30,9 @@ spec:
     - repoURL: https://github.com/test-task-2/example-voting-app.git
       targetRevision: HEAD
       ref: values
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      ref: infra
     - repoURL: https://github.com/test-task-2/example-voting-app.git
       targetRevision: HEAD
       path: charts/voting-app
@@ -37,6 +40,7 @@ spec:
         releaseName: voting-app
         valueFiles:
           - $values/values-aws.yaml
+          - $infra/terraform-values.yaml
         valuesObject:
           externalSecret:
             remoteKey: cool/postgres-app
