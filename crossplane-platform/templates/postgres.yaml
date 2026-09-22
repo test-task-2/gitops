@@ -2,7 +2,7 @@
 apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: ParameterGroup
 metadata:
-  name: cool-postgres16
+  name: voting-postgres16
   namespace: {{ .Release.Namespace }}
 spec:
   forProvider:
@@ -19,10 +19,10 @@ spec:
 apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
-  name: cool-postgres
+  name: voting-postgres
   namespace: {{ .Release.Namespace }}
   annotations:
-    crossplane.io/external-name: cool-postgres
+    crossplane.io/external-name: voting-postgres
 spec:
   forProvider:
     region: {{ $region }}
@@ -41,9 +41,9 @@ spec:
     dbSubnetGroupNameRef:
       name: voting-postgres
     parameterGroupNameRef:
-      name: cool-postgres16
+      name: voting-postgres16
     vpcSecurityGroupIdRefs:
-      - name: cool-db
+      - name: voting-db
     publiclyAccessible: false
     backupRetentionPeriod: 0
     skipFinalSnapshot: true
