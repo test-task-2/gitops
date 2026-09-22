@@ -25,7 +25,13 @@ spec:
     syncOptions:
       - ServerSideApply=true
       - SkipDryRunOnMissingResource=true
-  source:
-    repoURL: https://github.com/test-task-2/gitops.git
-    targetRevision: HEAD
-    path: crossplane-platform
+  sources:
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      ref: values
+    - repoURL: https://github.com/test-task-2/gitops.git
+      targetRevision: HEAD
+      path: crossplane-platform
+      helm:
+        valueFiles:
+          - $values/terraform-values.yaml

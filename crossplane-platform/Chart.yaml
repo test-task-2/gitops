@@ -1,0 +1,5 @@
+apiVersion: v2
+name: crossplane-platform
+description: Observe Terraform-owned subnets so Crossplane can reference them.
+type: application
+version: 0.1.0
