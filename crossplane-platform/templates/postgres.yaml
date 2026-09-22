@@ -21,6 +21,8 @@ kind: Instance
 metadata:
   name: cool-postgres
   namespace: {{ .Release.Namespace }}
+  annotations:
+    crossplane.io/external-name: cool-postgres
 spec:
   forProvider:
     region: {{ $region }}
