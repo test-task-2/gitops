@@ -1,0 +1,18 @@
+{{- $region := required "region from terraform-values.yaml" .Values.region }}
+{{- $subnets := required "databaseSubnets from terraform-values.yaml" .Values.databaseSubnets }}
+apiVersion: rds.aws.m.upbound.io/v1beta1
+kind: SubnetGroup
+metadata:
+  name: voting-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  forProvider:
+    region: {{ $region }}
+    description: Voting app Postgres
+    subnetIdRefs:
+      {{- range $subnets }}
+      - name: {{ .name }}
+      {{- end }}
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: default

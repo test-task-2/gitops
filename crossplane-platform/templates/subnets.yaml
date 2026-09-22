@@ -1,11 +1,5 @@
 {{- $region := required "region from terraform-values.yaml" .Values.region }}
-{{- $pools := list
-  (dict "tier" "db" "subnets" (.Values.databaseSubnets | default list))
-  (dict "tier" "redis" "subnets" (.Values.elasticacheSubnets | default list))
-}}
-{{- range $pools }}
-{{- $tier := .tier }}
-{{- range .subnets }}
+{{- range .Values.databaseSubnets }}
 ---
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
@@ -21,9 +15,29 @@ spec:
     availabilityZone: {{ .availabilityZone }}
     tags:
       Name: {{ .name }}
-      Tier: {{ $tier }}
+      Tier: db
   providerConfigRef:
     kind: ClusterProviderConfig
     name: default
 {{- end }}
+{{- range .Values.elasticacheSubnets }}
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: Subnet
+metadata:
+  name: {{ .name }}
+  namespace: crossplane-system
+  annotations:
+    crossplane.io/external-name: {{ .id | quote }}
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    region: {{ $region }}
+    availabilityZone: {{ .availabilityZone }}
+    tags:
+      Name: {{ .name }}
+      Tier: redis
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: default
 {{- end }}

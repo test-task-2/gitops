@@ -1,5 +1,5 @@
 apiVersion: v2
 name: crossplane-platform
-description: Observe Terraform-owned subnets so Crossplane can reference them.
+description: Voting app database subnets, subnet group, and RDS instance.
 type: application
 version: 0.1.0

@@ -1,0 +1,16 @@
+{{- $region := required "region from terraform-values.yaml" .Values.region }}
+{{- $id := required "databaseSecurityGroupId from terraform-values.yaml" .Values.databaseSecurityGroupId }}
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroup
+metadata:
+  name: cool-db
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    crossplane.io/external-name: {{ $id | quote }}
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    region: {{ $region }}
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: default
