@@ -26,6 +26,7 @@ metadata:
 spec:
   forProvider:
     region: {{ $region }}
+    identifier: voting-postgres
     engine: postgres
     engineVersion: "16.13"
     instanceClass: db.t3.micro
